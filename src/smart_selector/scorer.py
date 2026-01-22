@@ -1,9 +1,8 @@
-"""Smart Selector scoring with Phase 1 enhancements.
+"""Smart Selector scoring with Phase 1 & 2 enhancements.
 
 Composites signals from:
-- Aging penalty (exponential multiplier for old issues)
-- SLA tracking (urgency based on priority SLA window)
-- Dependency graph (blocked/blocking status)
+- Phase 1: Aging penalty, SLA tracking, Dependency graph
+- Phase 2: Semantic clustering (duplicate detection)
 - Original signals: age, priority, impact, blockers, velocity
 
 All normalized to [0,1] and combined with configurable weights.
@@ -15,17 +14,16 @@ from typing import Optional, Dict
 from src.smart_selector.aging_penalty import AgingPenaltyCalculator
 from src.sla_tracker.tracker import SLATracker, Priority as SLAPriority
 
-# Example normalized composite scorer used by smart_selector service.
-# We normalize signals to [0,1] and combine with weights stored in env/Secret Manager.
-
+# Updated weights with clustering (0.10 for cluster_score)
 DEFAULT_WEIGHTS = {
-    "age": 0.15,           # Reduced from 0.25 (aging penalty replaces some age scoring)
-    "priority": 0.25,
-    "impact": 0.15,
-    "blocker": 0.10,
-    "velocity": 0.10,
-    "aging_penalty": 0.15,  # NEW: Exponential penalty for very old issues
-    "sla_urgency": 0.10,    # NEW: How close to SLA breach
+    "age": 0.15,           # Age of issue
+    "priority": 0.25,      # Issue priority level
+    "impact": 0.15,        # Cost impact
+    "blocker": 0.10,       # Blocking/blocked status
+    "velocity": 0.10,      # Team velocity
+    "aging_penalty": 0.10, # Exponential penalty for old issues
+    "sla_urgency": 0.10,   # SLA breach urgency
+    "clustering": 0.05,    # Duplicate/cluster membership (NEW)
 }
 
 
@@ -52,6 +50,45 @@ def blocker_penalty(blocker_count: int) -> float:
 def velocity_score(velocity_percentile: float) -> float:
     """Expect 0..1 value; higher means team clears issues faster."""
     return max(0.0, min(1.0, velocity_percentile))
+
+
+def cluster_score(issue: dict, cluster_info: Optional[Dict] = None) -> float:
+    """Calculate clustering score based on duplicate cluster membership.
+    
+    Small clusters (1-2 members, unique issues) = higher score (1.0-0.8)
+    Large clusters (10+ members, likely duplicates) = lower score (0.3-0.0)
+    
+    Rationale:
+    - Unique issues (cluster_size=1) should be prioritized
+    - Duplicate issues should be deprioritized in favor of primary
+    
+    Args:
+        issue: Issue dict
+        cluster_info: Optional {cluster_id, members_count, is_primary}
+    
+    Returns:
+        Float in [0, 1]
+    """
+    if cluster_info is None:
+        return 0.5  # Default: no cluster info = neutral score
+    
+    members_count = cluster_info.get("members_count", 1)
+    is_primary = cluster_info.get("is_primary", True)
+    
+    # If issue is in a cluster and not primary, lower score
+    if not is_primary and members_count > 1:
+        # Duplicate: scale down significantly
+        return max(0.0, 0.4 - (members_count / 50.0))
+    
+    # Primary or small cluster: scale up
+    if members_count <= 1:
+        return 1.0  # Unique issue, highest priority
+    elif members_count <= 3:
+        return 0.8  # Small cluster, mostly unique
+    elif members_count <= 10:
+        return 0.5  # Medium cluster
+    else:
+        return 0.3  # Large cluster (likely all similar)
 
 
 def aging_penalty_score(issue: dict, now: Optional[datetime] = None) -> tuple:
@@ -134,8 +171,23 @@ def blocking_status_score(issue: dict) -> tuple:
     return penalty, can_assign
 
 
-def composite_score(issue: dict, weights: dict = None, now: Optional[datetime] = None) -> float:
-    """Compute composite UIMS score with Phase 1 enhancements."""
+def composite_score(
+    issue: dict,
+    weights: dict = None,
+    now: Optional[datetime] = None,
+    cluster_info: Optional[Dict] = None
+) -> float:
+    """Compute composite UIMS score with Phase 1 & 2 enhancements.
+    
+    Args:
+        issue: Issue dict with all fields
+        weights: Custom weights dict (uses DEFAULT_WEIGHTS if None)
+        now: Current time (defaults to UTC now)
+        cluster_info: Optional clustering metadata {cluster_id, members_count, is_primary}
+    
+    Returns:
+        Score normalized to [0, 100]
+    """
     w = weights or DEFAULT_WEIGHTS
     if now is None:
         now = datetime.now(timezone.utc)
@@ -152,6 +204,9 @@ def composite_score(issue: dict, weights: dict = None, now: Optional[datetime] =
     su = sla_urgency_score(issue, now)
     block_penalty, can_assign = blocking_status_score(issue)
     
+    # Phase 2 signals
+    cs = cluster_score(issue, cluster_info)
+    
     # If blocked, reduce score significantly
     if not can_assign:
         block_penalty = 0.2
@@ -162,8 +217,9 @@ def composite_score(issue: dict, weights: dict = None, now: Optional[datetime] =
         + w.get("impact", 0.15) * i
         + w.get("blocker", 0.10) * block_penalty
         + w.get("velocity", 0.10) * v
-        + w.get("aging_penalty", 0.15) * ap
+        + w.get("aging_penalty", 0.10) * ap
         + w.get("sla_urgency", 0.10) * su
+        + w.get("clustering", 0.05) * cs
     )
     
     # Normalize to 0..100
