@@ -14,7 +14,9 @@ class FirestoreLockManager:
     - Lock documents have shape: { owner: str, expiry: int } where expiry is epoch sec.
     """
 
-    def __init__(self, client: Optional[object] = None, collection: str = "locks", time_fn=None):
+    def __init__(
+        self, client: Optional[object] = None, collection: str = "locks", time_fn=None
+    ):
         self._client = client
         self._collection = collection
         self._time_fn = time_fn or time.time
@@ -30,9 +32,18 @@ class FirestoreLockManager:
         return self._client.collection(self._collection).document(lock_id)
 
     def _supports_transactions(self) -> bool:
-        return self._client is not None and callable(getattr(self._client, "transaction", None))
+        return self._client is not None and callable(
+            getattr(self._client, "transaction", None)
+        )
 
-    def acquire_lock(self, lock_id: str, owner: str, ttl_seconds: int, retry_seconds: float = 0.0, timeout_seconds: float = 0.0) -> bool:
+    def acquire_lock(
+        self,
+        lock_id: str,
+        owner: str,
+        ttl_seconds: int,
+        retry_seconds: float = 0.0,
+        timeout_seconds: float = 0.0,
+    ) -> bool:
         """Try to acquire a lock. If `retry_seconds` > 0, keep retrying until timeout_seconds.
 
         Returns True if lock acquired, False otherwise.
@@ -40,7 +51,11 @@ class FirestoreLockManager:
         if self._fallback:
             return self._fallback.acquire_lock(lock_id, owner, ttl_seconds)
 
-        deadline = self._now() + float(timeout_seconds) if timeout_seconds and timeout_seconds > 0 else None
+        deadline = (
+            self._now() + float(timeout_seconds)
+            if timeout_seconds and timeout_seconds > 0
+            else None
+        )
         while True:
             now = int(self._now())
             expiry = now + int(ttl_seconds)

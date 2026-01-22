@@ -1,0 +1,38 @@
+name: Terraform Plan
+
+on:
+  pull_request:
+    paths:
+      - 'infra/terraform/**'
+      - '.github/workflows/**'
+
+jobs:
+  terraform-plan:
+    name: Terraform Plan
+    runs-on: ubuntu-latest
+    if: false # enable after configuring secrets: GCP_CREDENTIALS, TF_BACKEND_BUCKET
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.7.0
+      - name: Configure gcloud
+        env:
+          GCP_CREDENTIALS: ${{ secrets.GCP_CREDENTIALS }}
+        run: |
+          echo "$GCP_CREDENTIALS" > /tmp/gcp.json
+          gcloud auth activate-service-account --key-file=/tmp/gcp.json
+      - name: Terraform Init
+        run: terraform init -input=false -backend-config="bucket=${{ secrets.TF_BACKEND_BUCKET }}" -backend-config="prefix=uims-spoke/terraform"
+      - name: Terraform Fmt Check
+        run: terraform fmt -check -recursive
+      - name: Terraform Validate
+        run: terraform validate
+      - name: Terraform Plan
+        run: terraform plan -input=false -no-color -out=tfplan
+      - name: Save Plan
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan
+          path: tfplan

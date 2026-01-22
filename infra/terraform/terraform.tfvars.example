@@ -1,0 +1,10 @@
+/*
+  Example terraform.tfvars - copy to terraform.tfvars and fill in values for local testing.
+*/
+project = "my-gcp-project"
+region  = "us-central1"
+dataset = "uims_analytics"
+
+# backend settings (used for remote state)
+backend_bucket = "my-terraform-state-bucket"
+backend_prefix = "uims-spoke/terraform"

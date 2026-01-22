@@ -1,0 +1,1 @@
+"""Smart selector package"""

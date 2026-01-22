@@ -1,0 +1,16 @@
+# Deterministic routing rules based on PROJECT_REPOSITORY_MAP.md
+# Format: name: {match: [keywords], project: project-id}
+
+infrastructure:
+  match: ["terraform", "infrastructure", "gcp", "vpc", "subnet"]
+  project: "uims-hub-infra"
+
+monitoring:
+  match: ["monitoring", "prometheus", "alert", "slo", "grafana"]
+  project: "uims-spoke-monitoring"
+
+logging:
+  match: ["logging", "log", "stackdriver", "cloud logging"]
+  project: "uims-spoke-logging"
+
+# Add more rules here; ML fallback used when no deterministic rule matches.
