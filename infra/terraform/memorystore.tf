@@ -1,20 +1,7 @@
-variable "enabled" {
-  type    = bool
-  default = false
-}
-
-variable "memory_size_gb" {
-  type    = number
-  default = 1
-}
-
-variable "environment" {
-  type    = string
-  default = "dev"
-}
+# Variables defined in variables.tf; use var.redis_enabled instead of var.enabled
 
 resource "google_redis_instance" "uims_redis" {
-  count          = var.enabled ? 1 : 0
+  count          = var.redis_enabled ? 1 : 0
 
   name           = "uims-redis"
   tier           = "STANDARD_HA"

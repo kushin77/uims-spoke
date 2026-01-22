@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [ main, feat/*, chore/*, test/* ]
+    branches: [ main, 'feat/*', 'chore/*', 'test/*' ]
   pull_request:
     branches: [ main ]
 
@@ -23,30 +23,17 @@ jobs:
         run: |
           pytest -q
 
-  # Terraform checks (placeholder) - configure GCP credentials in secrets before enabling
-  terraform:
-    runs-on: ubuntu-latest
-    if: false # enable after configuring credentials
-    steps:
-      - uses: actions/checkout@v4
-      - name: Terraform fmt
-        run: terraform fmt -check -recursive || true
-name: CI
-
-on: [push, pull_request]
-
-jobs:
-  checks:
+  terraform-validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
         with:
-          python-version: '3.11'
-      - name: Install dependencies
-        run: pip install -r requirements.txt || true
-      - name: Lint
-        run: make lint || true
-      - name: Test
-        run: make test || true
+          terraform_version: '1.7.10'
+      - name: Terraform init (infra/terraform)
+        working-directory: infra/terraform
+        run: terraform init -backend=false
+      - name: Terraform validate (infra/terraform)
+        working-directory: infra/terraform
+        run: terraform validate
